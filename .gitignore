@@ -1,4 +1,6 @@
 session.db
+session.zip
+session.enc
 __pycache__/
 *.pyc
 .env
