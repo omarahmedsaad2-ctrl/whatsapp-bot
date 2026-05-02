@@ -28,14 +28,34 @@ jobs:
       - name: 📦 Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: 📂 Restore WhatsApp session
-        uses: actions/cache/restore@v4
+      - name: Restore Session Cache
+        id: cache-session
+        uses: actions/cache@v3
         with:
           path: session.db
-          key: wa-session-
-          restore-keys: wa-session-
+          key: session-db-${{ github.run_id }}
+          restore-keys: |
+            session-db-
 
-      - name: 🤖 Run Bot
+      - name: Decrypt Initial Session (If not in cache)
+        if: steps.cache-session.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install cryptography
+          python -c "
+          import os, zipfile
+          from cryptography.fernet import Fernet
+          fernet = Fernet(os.environ['SESSION_KEY'])
+          with open('session.enc', 'rb') as f:
+              decrypted = fernet.decrypt(f.read())
+          with open('session.zip', 'wb') as f:
+              f.write(decrypted)
+          with zipfile.ZipFile('session.zip', 'r') as zip_ref:
+              zip_ref.extractall('.')
+          "
+        env:
+          SESSION_KEY: ${{ secrets.SESSION_KEY }}
+
+      - name: Run WhatsApp Bot
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
           OLLAMA_API_URL: ${{ secrets.OLLAMA_API_URL }}
