@@ -1,5 +1,3 @@
 neonize
 requests
 python-dotenv
-flask
-PySocks
