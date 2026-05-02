@@ -4,11 +4,20 @@ import json
 import time
 import threading
 import sys
+
+# تحميل متغيرات البيئة من ملف .env (للتشغيل المحلي)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from neonize.client import NewClient
-from neonize.events import MessageEv, ConnectedEv
+from neonize.events import MessageEv, ConnectedEv, QREv
 from neonize.utils import log
 from neonize.utils.jid import Jid2String
 from neonize.utils.enum import ChatPresence, ChatPresenceMedia
+import segno
 
 # ============================================================
 # ⚙️  إعدادات الـ API
@@ -45,17 +54,36 @@ def ask_ollama(jid, user_message):
     
     try:
         response = requests.post(OLLAMA_API_URL, headers=headers, json=payload, timeout=60)
+        if response.status_code != 200:
+            print(f"❌ API HTTP {response.status_code}: {response.text[:500]}")
+            return f"خطأ من السيرفر (HTTP {response.status_code})"
         data = response.json()
         reply = data.get("message", {}).get("content") or data.get("choices", [{}])[0].get("message", {}).get("content")
         if reply:
             add_to_history(jid, "assistant", reply)
             return reply
+        print(f"❌ Unexpected API response: {json.dumps(data)[:500]}")
         return "عذراً، لم أتمكن من الرد."
     except Exception as e:
-        print(f"❌ API Error: {e}")
+        print(f"❌ API Error: {type(e).__name__}: {e}")
         return "حدث خطأ في الاتصال بالسيرفر."
 
 client = NewClient("session.db")
+qr_shown = False
+
+@client.event(QREv)
+def on_qr(_client: NewClient, event: QREv):
+    global qr_shown
+    if not qr_shown:
+        qr_shown = True
+        codes = event.Codes
+        if codes:
+            qr_code = segno.make(codes[0])
+            qr_code.terminal(compact=True)
+            print("\n📱 Scan this QR code with WhatsApp (Linked Devices)")
+            print("⏳ Waiting for scan...\n")
+    else:
+        print("⏳ Still waiting for QR scan...")
 
 @client.event(ConnectedEv)
 def on_connected(_client: NewClient, _event: ConnectedEv):
@@ -84,6 +112,12 @@ def shutdown_timer():
 
 if __name__ == "__main__":
     print("🤖 Starting WhatsApp Bot...")
+    print(f"🔗 API URL: {OLLAMA_API_URL}")
+    print(f"🔑 API Key: {'✅ Set' if OLLAMA_API_KEY else '❌ MISSING!'}")
+    print(f"🧠 Model: {MODEL_NAME}")
+    
+    if not OLLAMA_API_KEY:
+        print("⚠️  WARNING: OLLAMA_API_KEY is not set! Create a .env file with your keys.")
     
     # تشغيل مؤقت الإيقاف
     timer = threading.Thread(target=shutdown_timer, daemon=True)
@@ -96,3 +130,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Connection failed: {e}. Retrying in 10 seconds...")
             time.sleep(10)
+
