@@ -38,20 +38,24 @@ jobs:
             session-db-
 
       - name: Decrypt Initial Session (If not in cache)
-        if: steps.cache-session.outputs.cache-hit != 'true'
         run: |
-          python -m pip install cryptography
-          python -c "
-          import os, zipfile
-          from cryptography.fernet import Fernet
-          fernet = Fernet(os.environ['SESSION_KEY'])
-          with open('session.enc', 'rb') as f:
-              decrypted = fernet.decrypt(f.read())
-          with open('session.zip', 'wb') as f:
-              f.write(decrypted)
-          with zipfile.ZipFile('session.zip', 'r') as zip_ref:
-              zip_ref.extractall('.')
-          "
+          if [ ! -f "session.db" ]; then
+            echo "Session not found in cache. Decrypting..."
+            python -m pip install cryptography
+            python -c "
+            import os, zipfile
+            from cryptography.fernet import Fernet
+            fernet = Fernet(os.environ['SESSION_KEY'])
+            with open('session.enc', 'rb') as f:
+                decrypted = fernet.decrypt(f.read())
+            with open('session.zip', 'wb') as f:
+                f.write(decrypted)
+            with zipfile.ZipFile('session.zip', 'r') as zip_ref:
+                zip_ref.extractall('.')
+            "
+          else
+            echo "Session found in cache. Skipping decryption."
+          fi
         env:
           SESSION_KEY: ${{ secrets.SESSION_KEY }}
 
