@@ -22,8 +22,11 @@ import segno
 # ============================================================
 # ⚙️  إعدادات الـ API
 # ============================================================
-OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY", "")
-OLLAMA_API_URL = (os.environ.get("OLLAMA_API_URL", "https://ollama.com")).strip().rstrip("/") + "/api/chat"
+OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY", "").strip()
+api_url_env = os.environ.get("OLLAMA_API_URL", "").strip()
+if not api_url_env:
+    api_url_env = "https://ollama.com"
+OLLAMA_API_URL = api_url_env.rstrip("/") + "/api/chat"
 MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-oss:120b-cloud")
 
 # مدة التشغيل القصوى (5 ساعات و20 دقيقة) عشان GitHub Actions حد أقصى 6 ساعات
