@@ -1,0 +1,50 @@
+name: 🤖 WhatsApp Bot Runner
+
+on:
+  schedule:
+    - cron: '0 */5 * * *'  # كل 5 ساعات
+  workflow_dispatch:        # تشغيل يدوي
+
+jobs:
+  run-bot:
+    name: Run WhatsApp Bot
+    runs-on: ubuntu-latest
+    timeout-minutes: 350    # 5 ساعات و50 دقيقة
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 📦 Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libmagic1
+
+      - name: 📦 Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: 📂 Restore WhatsApp session
+        uses: actions/cache/restore@v4
+        with:
+          path: session.db
+          key: wa-session-
+          restore-keys: wa-session-
+
+      - name: 🤖 Run Bot
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_API_URL: ${{ secrets.OLLAMA_API_URL }}
+          MAX_RUNTIME: "19200"
+        run: python main.py
+
+      - name: 💾 Save WhatsApp session
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: session.db
+          key: wa-session-${{ github.run_id }}
