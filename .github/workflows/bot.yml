@@ -67,4 +67,4 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: session.db
-          key: wa-session-${{ github.run_id }}
+          key: session-db-${{ github.run_id }}
