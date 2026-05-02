@@ -30,7 +30,7 @@ jobs:
 
       - name: Restore Session Cache
         id: cache-session
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: session.db
           key: session-db-${{ github.run_id }}
@@ -40,19 +40,23 @@ jobs:
       - name: Decrypt Initial Session (If not in cache)
         run: |
           if [ ! -f "session.db" ]; then
-            echo "Session not found in cache. Decrypting..."
-            python -m pip install cryptography
-            python -c "
-            import os, zipfile
-            from cryptography.fernet import Fernet
-            fernet = Fernet(os.environ['SESSION_KEY'])
-            with open('session.enc', 'rb') as f:
-                decrypted = fernet.decrypt(f.read())
-            with open('session.zip', 'wb') as f:
-                f.write(decrypted)
-            with zipfile.ZipFile('session.zip', 'r') as zip_ref:
-                zip_ref.extractall('.')
-            "
+            echo "Session not found in cache. Checking for session.enc..."
+            if [ -f "session.enc" ]; then
+              python -m pip install cryptography
+              python -c "
+              import os, zipfile
+              from cryptography.fernet import Fernet
+              fernet = Fernet(os.environ['SESSION_KEY'])
+              with open('session.enc', 'rb') as f:
+                  decrypted = fernet.decrypt(f.read())
+              with open('session.zip', 'wb') as f:
+                  f.write(decrypted)
+              with zipfile.ZipFile('session.zip', 'r') as zip_ref:
+                  zip_ref.extractall('.')
+              "
+            else
+              echo "No session.enc found. Proceeding with fresh start (QR Scan required)."
+            fi
           else
             echo "Session found in cache. Skipping decryption."
           fi
