@@ -19,8 +19,7 @@ except ImportError:
     pass
 
 from neonize.client import NewClient
-from neonize.events import MessageEv, ConnectedEv, QREv
-from neonize.utils import log
+from neonize.events import MessageEv, ConnectedEv
 from neonize.utils.jid import Jid2String
 from neonize.utils.enum import ChatPresence, ChatPresenceMedia
 import segno
