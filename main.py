@@ -1,9 +1,15 @@
 import os
+import sys
+import io
+
+# Fix Windows encoding BEFORE any library imports
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+
 import requests
 import json
 import time
 import threading
-import sys
 
 # تحميل متغيرات البيئة من ملف .env (للتشغيل المحلي)
 try:
@@ -72,65 +78,103 @@ def ask_ollama(jid, user_message):
         return "حدث خطأ في الاتصال بالسيرفر."
 
 client = NewClient("session.db")
-qr_shown = False
+_qr_count = 0
+_last_qr_time = 0
 
-@client.event(QREv)
-def on_qr(_client: NewClient, event: QREv):
-    global qr_shown
-    if not qr_shown:
-        qr_shown = True
-        codes = event.Codes
-        if codes:
-            qr_code = segno.make(codes[0])
-            qr_code.terminal(compact=True)
-            print("\n📱 Scan this QR code with WhatsApp (Linked Devices)")
-            print("⏳ Waiting for scan...\n")
+@client.event.qr
+def on_qr(_client: NewClient, data_qr: bytes):
+    """عرض QR code واحد بس - مع debounce 20 ثانية"""
+    global _qr_count, _last_qr_time
+    now = time.time()
+
+    # Debounce: تجاهل QR events لو مر أقل من 20 ثانية
+    if now - _last_qr_time < 20:
+        return
+
+    _last_qr_time = now
+    _qr_count += 1
+
+    if _qr_count > 1:
+        print("\n" + "=" * 50)
+        print(">> QR expired - new one below:")
+        print("=" * 50)
     else:
-        print("⏳ Still waiting for QR scan...")
+        print("\n" + "=" * 50)
+
+    qr_code = segno.make(data_qr)
+    qr_code.terminal(compact=True)
+    print(f"\n>> Scan with WhatsApp > Linked Devices > Link a Device")
+    print(f">> Attempt #{_qr_count}")
+    print(">> Waiting for scan...\n")
 
 @client.event(ConnectedEv)
 def on_connected(_client: NewClient, _event: ConnectedEv):
-    print("\n✅ WhatsApp connected successfully!\n")
+    global _qr_count
+    _qr_count = 0
+    print("\n" + "=" * 50)
+    print("[OK] WhatsApp connected successfully!")
+    print("=" * 50 + "\n")
 
 @client.event(MessageEv)
 def on_message(client: NewClient, message: MessageEv):
-    message_content = message.Message
-    text = message_content.conversation or (message_content.extendedTextMessage.text if message_content.extendedTextMessage else "")
-    if message.Info.MessageSource.IsFromMe or not text:
-        return
-    jid = message.Info.MessageSource.Chat
-    client.send_chat_presence(jid, ChatPresence.CHAT_PRESENCE_COMPOSING, ChatPresenceMedia.CHAT_PRESENCE_MEDIA_TEXT)
-    reply = ask_ollama(Jid2String(jid), text)
-    client.send_message(jid, reply)
+    try:
+        message_content = message.Message
+        text = message_content.conversation or (
+            message_content.extendedTextMessage.text
+            if message_content.extendedTextMessage
+            else ""
+        )
+        if message.Info.MessageSource.IsFromMe or not text:
+            return
+
+        jid = message.Info.MessageSource.Chat
+        sender = Jid2String(jid)
+        print(f"[MSG] From {sender}: {text[:80]}...")
+
+        client.send_chat_presence(
+            jid,
+            ChatPresence.CHAT_PRESENCE_COMPOSING,
+            ChatPresenceMedia.CHAT_PRESENCE_MEDIA_TEXT,
+        )
+        reply = ask_ollama(sender, text)
+        client.send_message(jid, reply)
+        print(f"[OK] Reply sent to {sender}")
+    except Exception as e:
+        print(f"[ERR] Error processing message: {type(e).__name__}: {e}")
 
 # ============================================================
 # ⏱️ مؤقت الإيقاف التلقائي (لـ GitHub Actions)
 # ============================================================
 def shutdown_timer():
     """إيقاف البوت قبل حد الـ 6 ساعات في GitHub Actions"""
-    print(f"⏱️ Auto-shutdown timer set: {MAX_RUNTIME} seconds ({MAX_RUNTIME//3600}h {(MAX_RUNTIME%3600)//60}m)")
+    print(f"[TIMER] Auto-shutdown: {MAX_RUNTIME}s ({MAX_RUNTIME//3600}h {(MAX_RUNTIME%3600)//60}m)")
     time.sleep(MAX_RUNTIME)
-    print("⏱️ Scheduled shutdown - session saved automatically.")
+    print("[TIMER] Scheduled shutdown - session saved.")
     os._exit(0)
 
 if __name__ == "__main__":
-    print("🤖 Starting WhatsApp Bot...")
-    print(f"🔗 API URL: {OLLAMA_API_URL}")
-    print(f"🔑 API Key: {'✅ Set' if OLLAMA_API_KEY else '❌ MISSING!'}")
-    print(f"🧠 Model: {MODEL_NAME}")
-    
+    print("[BOT] Starting WhatsApp Bot...")
+    print(f"[URL] {OLLAMA_API_URL}")
+    print(f"[KEY] {'Set' if OLLAMA_API_KEY else 'MISSING!'}")
+    print(f"[MDL] {MODEL_NAME}")
+
     if not OLLAMA_API_KEY:
-        print("⚠️  WARNING: OLLAMA_API_KEY is not set! Create a .env file with your keys.")
-    
+        print("[WARN] OLLAMA_API_KEY is not set! Create a .env file.")
+
     # تشغيل مؤقت الإيقاف
     timer = threading.Thread(target=shutdown_timer, daemon=True)
     timer.start()
 
-    while True:
-        try:
-            client.connect()
-            break
-        except Exception as e:
-            print(f"Connection failed: {e}. Retrying in 10 seconds...")
-            time.sleep(10)
+    # حذف الـ session القديم لو فيه مشكلة
+    if os.path.exists("session.db") and os.path.getsize("session.db") > 0:
+        print("[INFO] Found existing session, reconnecting...")
+    else:
+        print("[INFO] No session found, will show QR code...")
 
+    try:
+        client.connect()
+    except KeyboardInterrupt:
+        print("\n[BYE] Bot stopped by user.")
+    except Exception as e:
+        print(f"[FATAL] {type(e).__name__}: {e}")
+        sys.exit(1)
