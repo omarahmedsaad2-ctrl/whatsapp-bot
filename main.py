@@ -557,6 +557,20 @@ def on_message(client: NewClient, message: MessageEv):
         ensure_db_initialized()
         client.send_chat_presence(jid_obj, ChatPresence.CHAT_PRESENCE_COMPOSING, ChatPresenceMedia.CHAT_PRESENCE_MEDIA_TEXT)
 
+        # 0. Check for manual /update command
+        if text.strip().lower().startswith('/update'):
+            fact = text.strip()[7:].strip()
+            if fact:
+                save_to_knowledge(fact)
+                response = "✅ تمام يا باشا، ضفت المعلومة دي لذاكرتي وهفتكرها بعد كدة."
+                save_message(sender, "assistant", response)
+                client.send_message(jid_obj, response)
+                print(f"[OK] Manual knowledge update for {sender}")
+                return
+            else:
+                client.send_message(jid_obj, "⚠️ ابعت المعلومة اللي عايزني أفتكرها بعد الأمر.\nمثال: /update أنا بحب القهوة السادة")
+                return
+
         # 1. Compact history if too long
         compact_user_history(sender)
 
