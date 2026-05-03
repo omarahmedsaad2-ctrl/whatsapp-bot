@@ -90,6 +90,7 @@ def init_db():
     if conn:
         try:
             with conn.cursor() as cur:
+                # 1. Create tables (basic structure)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS wa_messages (
                         id SERIAL PRIMARY KEY,
@@ -98,21 +99,15 @@ def init_db():
                         content TEXT,
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                     );
-                    CREATE INDEX IF NOT EXISTS idx_wa_messages_jid ON wa_messages(jid);
                 """)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS wa_knowledge (
                         id SERIAL PRIMARY KEY,
-                        jid TEXT,
                         content TEXT NOT NULL,
                         search_vector tsvector,
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                     );
-                    CREATE INDEX IF NOT EXISTS idx_wa_knowledge_jid ON wa_knowledge(jid);
-                    CREATE INDEX IF NOT EXISTS idx_wa_knowledge_search ON wa_knowledge USING GIN(search_vector);
                 """)
-                cur.execute("ALTER TABLE wa_knowledge ADD COLUMN IF NOT EXISTS jid TEXT;")
-                cur.execute("CREATE INDEX IF NOT EXISTS idx_wa_knowledge_jid ON wa_knowledge(jid);")
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS wa_reminders (
                         id SERIAL PRIMARY KEY,
@@ -120,13 +115,23 @@ def init_db():
                         message TEXT,
                         remind_at TIMESTAMP WITH TIME ZONE,
                         is_sent BOOLEAN DEFAULT false,
-                        frequency TEXT DEFAULT NULL,
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
+
+                # 2. Add missing columns (safe for existing tables)
+                cur.execute("ALTER TABLE wa_knowledge ADD COLUMN IF NOT EXISTS jid TEXT;")
                 cur.execute("ALTER TABLE wa_reminders ADD COLUMN IF NOT EXISTS frequency TEXT;")
+
+                # 3. Create indexes (columns guaranteed to exist now)
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_wa_messages_jid ON wa_messages(jid);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_wa_knowledge_jid ON wa_knowledge(jid);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_wa_knowledge_search ON wa_knowledge USING GIN(search_vector);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_wa_reminders_jid ON wa_reminders(jid);")
+
                 conn.commit()
+                print("[DB] Database initialized successfully!")
+
         except Exception as e:
             print(f"[DB] Error initializing DB: {e}")
         finally:
