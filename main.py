@@ -103,12 +103,16 @@ def init_db():
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS wa_knowledge (
                         id SERIAL PRIMARY KEY,
+                        jid TEXT,
                         content TEXT NOT NULL,
                         search_vector tsvector,
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                     );
+                    CREATE INDEX IF NOT EXISTS idx_wa_knowledge_jid ON wa_knowledge(jid);
                     CREATE INDEX IF NOT EXISTS idx_wa_knowledge_search ON wa_knowledge USING GIN(search_vector);
                 """)
+                cur.execute("ALTER TABLE wa_knowledge ADD COLUMN IF NOT EXISTS jid TEXT;")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_wa_knowledge_jid ON wa_knowledge(jid);")
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS wa_reminders (
                         id SERIAL PRIMARY KEY,
@@ -149,7 +153,7 @@ def save_message(jid, role, content):
 def _has_arabic(text):
     return bool(re.search(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]', text))
 
-def knowledge_search(query_text, limit=3):
+def knowledge_search(jid, query_text, limit=3):
     conn, _ = get_db_connection()
     results = []
     if conn:
@@ -160,18 +164,18 @@ def knowledge_search(query_text, limit=3):
                     f"""
                     SELECT content, ts_rank(search_vector, plainto_tsquery('{ts_config}', %s)) as rank
                     FROM wa_knowledge 
-                    WHERE search_vector @@ plainto_tsquery('{ts_config}', %s)
+                    WHERE jid = %s AND search_vector @@ plainto_tsquery('{ts_config}', %s)
                     ORDER BY rank DESC LIMIT %s
                     """,
-                    (query_text, query_text, limit)
+                    (query_text, jid, query_text, limit)
                 )
                 results = [row[0] for row in cur.fetchall()]
                 if not results:
                     words = [w for w in query_text.split() if len(w) > 2][:4]
                     if words:
                         like_conditions = " OR ".join(["content ILIKE %s"] * len(words))
-                        like_params = [f"%{w}%" for w in words] + [limit]
-                        cur.execute(f"SELECT content FROM wa_knowledge WHERE {like_conditions} LIMIT %s", like_params)
+                        like_params = [f"%{w}%" for w in words] + [jid, limit]
+                        cur.execute(f"SELECT content FROM wa_knowledge WHERE jid = %s AND ({like_conditions}) LIMIT %s", like_params)
                         results = [row[0] for row in cur.fetchall()]
         except Exception:
             pass
@@ -182,13 +186,13 @@ def knowledge_search(query_text, limit=3):
         return f"\nRelevant Context found in my knowledge base:\n{context}\n"
     return ""
 
-def save_to_knowledge(text):
+def save_to_knowledge(jid, text):
     conn, _ = get_db_connection()
     if conn:
         try:
             ts_config = 'simple' if _has_arabic(text) else 'english'
             with conn.cursor() as cur:
-                cur.execute(f"INSERT INTO wa_knowledge (content, search_vector) VALUES (%s, to_tsvector('{ts_config}', %s))", (text, text))
+                cur.execute(f"INSERT INTO wa_knowledge (jid, content, search_vector) VALUES (%s, %s, to_tsvector('{ts_config}', %s))", (jid, text, text))
             conn.commit()
         except Exception:
             pass
@@ -552,7 +556,7 @@ def on_message(client: NewClient, message: MessageEv):
         if text.strip().lower().startswith('/update'):
             fact = text.strip()[7:].strip()
             if fact:
-                save_to_knowledge(fact)
+                save_to_knowledge(sender, fact)
                 response = "✅ تمام يا باشا، ضفت المعلومة دي لذاكرتي وهفتكرها بعد كدة."
                 save_message(sender, "assistant", response)
                 client.send_message(jid_obj, response)
@@ -579,7 +583,7 @@ def on_message(client: NewClient, message: MessageEv):
         save_message(sender, "user", text)
 
         # 5. Search knowledge base
-        context = knowledge_search(text)
+        context = knowledge_search(sender, text)
         text_with_context = f"Context from my knowledge base: {context}\n\nUser Question: {text}" if context else text
 
         # 6. Query AI
@@ -588,7 +592,7 @@ def on_message(client: NewClient, message: MessageEv):
         # 7. Process Auto-Memory tags
         learn_matches = re.findall(r'<LEARN>(.*?)</LEARN>', ai_response, flags=re.IGNORECASE | re.DOTALL)
         for fact in learn_matches:
-            save_to_knowledge(fact.strip())
+            save_to_knowledge(sender, fact.strip())
 
         # Clean tags
         clean_ai_response = re.sub(r'<LEARN>.*?</LEARN>', '', ai_response, flags=re.IGNORECASE | re.DOTALL)
