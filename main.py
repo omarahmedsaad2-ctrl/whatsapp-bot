@@ -124,6 +124,8 @@ def init_db():
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
+                cur.execute("ALTER TABLE wa_reminders ADD COLUMN IF NOT EXISTS frequency TEXT;")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_wa_reminders_jid ON wa_reminders(jid);")
                 conn.commit()
         except Exception as e:
             print(f"[DB] Error initializing DB: {e}")
