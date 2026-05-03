@@ -564,19 +564,52 @@ def on_message(client: NewClient, message: MessageEv):
         ensure_db_initialized()
         client.send_chat_presence(jid_obj, ChatPresence.CHAT_PRESENCE_COMPOSING, ChatPresenceMedia.CHAT_PRESENCE_MEDIA_TEXT)
 
-        # 0. Check for manual /update command
-        if text.strip().lower().startswith('/update'):
+        # 0. Check for manual commands
+        low_text = text.strip().lower()
+        
+        if low_text.startswith('/update'):
             fact = text.strip()[7:].strip()
             if fact:
                 save_to_knowledge(sender, fact)
                 response = "✅ تمام يا باشا، ضفت المعلومة دي لذاكرتي وهفتكرها بعد كدة."
                 save_message(sender, "assistant", response)
                 client.send_message(jid_obj, response)
-                print(f"[OK] Manual knowledge update for {sender}")
                 return
             else:
-                client.send_message(jid_obj, "⚠️ ابعت المعلومة اللي عايزني أفتكرها بعد الأمر.\nمثال: /update أنا بحب القهوة السادة")
+                client.send_message(jid_obj, "⚠️ ابعت المعلومة بعد الأمر. مثال: /update بحب القهوة")
                 return
+
+        if low_text == '/reminders':
+            reminders = list_user_reminders(sender)
+            if not reminders:
+                client.send_message(jid_obj, "⏰ معندكش أي تذكيرات دلوقتي.")
+            else:
+                lines = ["⏰ تذكيراتك الحالية:\n"]
+                for r_id, msg, r_time, is_sent in reminders:
+                    if r_time:
+                        if r_time.tzinfo is None: r_time = r_time.replace(tzinfo=timezone.utc)
+                        local_time = r_time.astimezone(CAIRO_TZ)
+                        t_str = local_time.strftime("%d/%m %I:%M %p")
+                    else: t_str = "غير محدد"
+                    lines.append(f"🔹 [{r_id}] {msg} ({t_str})")
+                client.send_message(jid_obj, "\n".join(lines))
+            return
+
+        if low_text == '/clear reminders':
+            success, count = clear_user_reminders(sender)
+            client.send_message(jid_obj, f"✅ تم مسح كل التذكيرات بنجاح ({count} تذكير).")
+            return
+
+        if low_text.startswith('/clear reminder '):
+            try:
+                r_id = int(low_text.replace('/clear reminder', '').strip())
+                if delete_user_reminder(sender, r_id):
+                    client.send_message(jid_obj, f"✅ تم حذف التذكير رقم {r_id} بنجاح.")
+                else:
+                    client.send_message(jid_obj, "❌ مش لاقي تذكير بالرقم ده أو اتمسح قبل كدة.")
+            except:
+                client.send_message(jid_obj, "⚠️ اكتب رقم التذكير صح. مثال: /clear reminder 5")
+            return
 
         # 1. Compact history if too long
         compact_user_history(sender)
