@@ -176,7 +176,7 @@ def knowledge_search(jid, query_text, limit=3):
                     words = [w for w in query_text.split() if len(w) > 2][:4]
                     if words:
                         like_conditions = " OR ".join(["content ILIKE %s"] * len(words))
-                        like_params = [f"%{w}%" for w in words] + [jid, limit]
+                        like_params = [jid] + [f"%{w}%" for w in words] + [limit]
                         cur.execute(f"SELECT content FROM wa_knowledge WHERE jid = %s AND ({like_conditions}) LIMIT %s", like_params)
                         results = [row[0] for row in cur.fetchall()]
         except Exception:
