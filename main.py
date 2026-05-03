@@ -360,13 +360,14 @@ def try_parse_reminder(jid, text, history=None):
         "Determine the user's intent from the text. Return ONLY a valid JSON object matching one of these intents:\n"
         "1. Set a ONE-TIME reminder: {\"intent\": \"add_reminder\", \"message\": \"what to remind\", \"remind_at\": \"2026-05-01T15:00:00+03:00\", \"recurring\": false}\n"
         "2. Set a RECURRING reminder (daily/weekly/etc): {\"intent\": \"add_reminder\", \"message\": \"what to remind\", \"remind_at\": \"2026-05-01T08:00:00+03:00\", \"recurring\": true, \"frequency\": \"daily\"}\n"
-        "   frequency options: daily, weekly, monthly, weekdays, weekends\n"
+        "   frequency options: daily, weekly, monthly, weekdays, weekends, OR a duration (e.g., '30s', '10m', '1h', '2h', '1d')\n"
         "3. Clear/Delete ALL reminders: {\"intent\": \"clear_reminders\"}\n"
         "4. Delete a specific reminder: {\"intent\": \"delete_reminder\", \"id\": 5} (only if they mention a specific ID)\n"
         "5. Show/List all reminders: {\"intent\": \"list_reminders\"}\n"
         "6. Normal chat / ask a question / anything else: {\"intent\": \"chat\"}\n"
         "RULES:\n"
-        "- Parse Egyptian Arabic naturally. 'كمان ساعة' = 1 hour from now. 'بكره' = tomorrow. 'كل يوم' = daily recurring.\n"
+        "- Parse Egyptian Arabic naturally. 'كمان ساعة' = 1 hour from now. 'بكره' = tomorrow.\n"
+        "- 'كل 30 ثانية' = recurring every 30s. 'كل دقيقة' = recurring every 1m. 'كل يوم' = daily.\n"
         "- 'فكرني' or 'ذكرني' or 'نبهني' or 'reminder' = add_reminder intent.\n"
         "- If user says 'كل يوم' or 'يوميا' or 'كل اسبوع' = recurring.\n"
         "- 'امسح كل التذكيرات' or 'شيل التذكيرات كلها' = clear_reminders.\n"
@@ -457,9 +458,20 @@ def process_due_reminders():
                 for row in due_reminders:
                     r_id, jid, msg, freq = row[0], row[1], row[2], row[3]
                     _send_wa_message(jid, f"⏰ تذكير: {msg}")
-                    if freq and freq in ('daily', 'weekly', 'monthly', 'weekdays', 'weekends'):
-                        interval_map = {'daily': '1 day', 'weekly': '7 days', 'monthly': '1 month', 'weekdays': '1 day', 'weekends': '1 day'}
-                        cur.execute(f"UPDATE wa_reminders SET remind_at = remind_at + INTERVAL '{interval_map[freq]}', is_sent = false WHERE id = %s", (r_id,))
+                    if freq:
+                        interval = None
+                        if freq in ('daily', 'weekly', 'monthly', 'weekdays', 'weekends'):
+                            interval_map = {'daily': '1 day', 'weekly': '7 days', 'monthly': '1 month', 'weekdays': '1 day', 'weekends': '1 day'}
+                            interval = interval_map[freq]
+                        elif freq.endswith('s'): interval = f"{freq[:-1]} seconds"
+                        elif freq.endswith('m'): interval = f"{freq[:-1]} minutes"
+                        elif freq.endswith('h'): interval = f"{freq[:-1]} hours"
+                        elif freq.endswith('d'): interval = f"{freq[:-1]} days"
+                        
+                        if interval:
+                            cur.execute(f"UPDATE wa_reminders SET remind_at = remind_at + INTERVAL %s, is_sent = false WHERE id = %s", (interval, r_id))
+                        else:
+                            cur.execute("UPDATE wa_reminders SET is_sent = true WHERE id = %s", (r_id,))
                     else:
                         cur.execute("UPDATE wa_reminders SET is_sent = true WHERE id = %s", (r_id,))
                 conn.commit()
@@ -509,7 +521,7 @@ def background_tasks():
             process_autonomous_loop()
         except Exception as e:
             print(f"[BG TASK ERR] {e}")
-        time.sleep(60) # Run every minute
+        time.sleep(10) # Run every 10 seconds for sub-minute reminders
 
 # ============================================================
 # 🟢 Neonize Handlers
