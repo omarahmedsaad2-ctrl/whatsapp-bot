@@ -22,11 +22,18 @@ except ImportError:
 
 from neonize.client import NewClient
 from neonize.events import MessageEv, ConnectedEv
-from neonize.utils.jid import Jid2String, String2Jid
+from neonize.utils.jid import Jid2String, build_jid
 from neonize.utils.enum import ChatPresence, ChatPresenceMedia
 import segno
 
 CAIRO_TZ = ZoneInfo("Africa/Cairo")
+
+def string_to_jid(jid_str: str):
+    if "@" in jid_str:
+        user, server = jid_str.split("@", 1)
+        return build_jid(user, server)
+    return build_jid(jid_str)
+
 
 OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY", "").strip()
 api_url_env = os.environ.get("OLLAMA_API_URL", "https://ollama.com").strip()
@@ -341,7 +348,7 @@ def _format_cairo_time(iso_str):
 
 def _send_wa_message(jid, text):
     try:
-        jid_obj = String2Jid(jid) if isinstance(jid, str) else jid
+        jid_obj = string_to_jid(jid) if isinstance(jid, str) else jid
         client.send_message(jid_obj, text)
     except Exception as e:
         print(f"[ERR] Failed to send to {jid}: {e}")
