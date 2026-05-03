@@ -5,6 +5,8 @@ import re
 import json
 import time
 import threading
+import shutil
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 import psycopg2
 from datetime import datetime, timezone, timedelta
@@ -40,7 +42,7 @@ api_url_env = os.environ.get("OLLAMA_API_URL", "https://ollama.com").strip()
 OLLAMA_API_URL = api_url_env.rstrip("/")
 OLLAMA_MODEL = os.environ.get("MODEL_NAME", "gpt-oss:120b-cloud").strip()
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-MAX_RUNTIME = int(os.environ.get("MAX_RUNTIME", 19200))
+
 
 SYSTEM_PROMPT = (
     "You are Gen Code AI Assistant (مساعد جين كود الذكي). Chatting on WhatsApp.\n"
@@ -62,7 +64,17 @@ SYSTEM_PROMPT = (
     "CRITICAL: If the user asks for code, explain the logic in words only. DO NOT PROVIDE CODE SNIPPETS."
 )
 
-client = NewClient("session.db")
+# Persistent storage for HF Spaces
+SESSION_DIR = "/data" if os.path.isdir("/data") else "."
+SESSION_PATH = os.path.join(SESSION_DIR, "session.db")
+
+# Copy bundled session to persistent storage on first run
+if SESSION_DIR == "/data" and not os.path.exists(SESSION_PATH) and os.path.exists("session.db"):
+    shutil.copy2("session.db", SESSION_PATH)
+    print("[SESSION] Copied session.db to persistent storage")
+
+client = NewClient(SESSION_PATH)
+START_TIME = time.time()
 _qr_count = 0
 _last_qr_time = 0
 
@@ -664,31 +676,80 @@ def on_message(client: NewClient, message: MessageEv):
         print(f"[ERR] Error processing message: {type(e).__name__}: {e}")
 
 # ============================================================
-# ⏱️ مؤقت الإيقاف التلقائي
+# 🌐 Health Check Server (Port 7860 for HF Spaces)
 # ============================================================
-def shutdown_timer():
-    print(f"[TIMER] Auto-shutdown: {MAX_RUNTIME}s ({MAX_RUNTIME//3600}h {(MAX_RUNTIME%3600)//60}m)")
-    time.sleep(MAX_RUNTIME)
-    print("[TIMER] Scheduled shutdown - session saved.")
-    os._exit(0)
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        uptime = int(time.time() - START_TIME)
+        hours, remainder = divmod(uptime, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        status = {
+            "status": "running",
+            "bot": "WhatsApp AI Bot",
+            "uptime": f"{hours}h {minutes}m {seconds}s",
+            "model": OLLAMA_MODEL,
+            "db_connected": bool(DATABASE_URL)
+        }
+        self.wfile.write(json.dumps(status, ensure_ascii=False).encode())
+
+    def log_message(self, format, *args):
+        pass  # Suppress HTTP logs
+
+def start_health_server():
+    server = HTTPServer(("0.0.0.0", 7860), HealthHandler)
+    print("[HEALTH] Health check server running on port 7860")
+    server.serve_forever()
+
+def keep_alive_ping():
+    """Self-ping to prevent HF Spaces auto-sleep (works for private spaces too)"""
+    space_id = os.environ.get("SPACE_ID", "")
+    hf_token = os.environ.get("HF_TOKEN", "")
+
+    if not space_id:
+        print("[KEEPALIVE] SPACE_ID not found (not on HF?), skipping keep-alive")
+        return
+
+    space_url = f"https://{space_id.replace('/', '-')}.hf.space"
+    headers = {}
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+
+    print(f"[KEEPALIVE] Active — pinging {space_url} every 5 min")
+
+    while True:
+        try:
+            resp = requests.get(space_url, headers=headers, timeout=15)
+            print(f"[KEEPALIVE] Ping OK ({resp.status_code})")
+        except Exception:
+            pass
+        time.sleep(300)  # Every 5 minutes
 
 if __name__ == "__main__":
-    print("[BOT] Starting WhatsApp Bot...")
+    print("[BOT] Starting WhatsApp Bot on HF Spaces...")
     print(f"[URL] {OLLAMA_API_URL}")
     print(f"[KEY] {'Set' if OLLAMA_API_KEY else 'MISSING!'}")
     print(f"[MDL] {OLLAMA_MODEL}")
     print(f"[DB] {'Set' if DATABASE_URL else 'MISSING!'}")
+    print(f"[SESSION] {SESSION_PATH}")
 
     if not OLLAMA_API_KEY:
         print("[WARN] OLLAMA_API_KEY is not set!")
 
-    timer = threading.Thread(target=shutdown_timer, daemon=True)
-    timer.start()
+    # Start health check server (required by HF Spaces on port 7860)
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+
+    # Keep-alive to prevent auto-sleep on free/private spaces
+    alive_thread = threading.Thread(target=keep_alive_ping, daemon=True)
+    alive_thread.start()
 
     bg_thread = threading.Thread(target=background_tasks, daemon=True)
     bg_thread.start()
 
-    if os.path.exists("session.db") and os.path.getsize("session.db") > 0:
+    if os.path.exists(SESSION_PATH) and os.path.getsize(SESSION_PATH) > 0:
         print("[INFO] Found existing session, reconnecting...")
     else:
         print("[INFO] No session found, will show QR code...")
@@ -700,3 +761,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"[FATAL] {type(e).__name__}: {e}")
         sys.exit(1)
+

@@ -1,5 +1,5 @@
 ---
-title: My Whatsapp Bot
+title: WhatsApp Bot
 emoji: 🤖
 colorFrom: green
 colorTo: blue
@@ -7,48 +7,24 @@ sdk: docker
 pinned: false
 ---
 
-# 🤖 واتساب بوت — مساعد شخصي بـ Ollama Cloud (نسخة Python)
+# 🤖 WhatsApp AI Bot — Hugging Face Spaces
 
-هذا البوت مبني باستخدام لغة **Python** ومكتبة **Neonize** لربط الواتساب بذكاء **Ollama Cloud (GPT-OSS:120B)**.
+بوت واتساب ذكي يشتغل 24/7 على Hugging Face Spaces باستخدام Docker.
 
-## متطلبات التشغيل
-- Python 3.10 أو أحدث.
-- مفتاح Ollama Cloud API.
+## المتطلبات (HF Secrets)
 
----
+اضبط المتغيرات دي في **Settings > Secrets**:
 
-## خطوات التشغيل
+| Secret | الوصف |
+|---|---|
+| `OLLAMA_API_KEY` | مفتاح API للـ Ollama Cloud |
+| `OLLAMA_API_URL` | رابط السيرفر (مثال: `https://ollama.com`) |
+| `MODEL_NAME` | اسم الموديل (مثال: `gpt-oss:120b-cloud`) |
+| `DATABASE_URL` | رابط قاعدة بيانات PostgreSQL |
 
-### 1️⃣ تثبيت المكتبات المطلوبة
-افتح التيرمينال واكتب:
-```bash
-pip install neonize requests
-```
-
-### 2️⃣ الإعدادات
-يمكنك تعديل الإعدادات مباشرة في ملف `main.py` أو استخدام متغيرات البيئة (Environment Variables):
-- `OLLAMA_API_KEY`: مفتاح الـ API الخاص بك.
-- `OLLAMA_API_URL`: رابط السيرفر (الافتراضي: https://ollama.com).
-- `MODEL_NAME`: اسم الموديل (الافتراضي: gpt-oss:120b).
-
-### 3️⃣ تشغيل البوت
-```bash
-python main.py
-```
-
-### 4️⃣ ربط الحساب
-- سيظهر لك رابط أو QR Code (حسب إعدادات المكتبة) في التيرمينال.
-- افتح واتساب على هاتفك -> الأجهزة المرتبطة -> ربط جهاز.
-- قم بمسح الـ QR Code.
-
----
-
-## مميزات نسخة Python
-- **ذكاء اصطناعي أقوى:** سهولة دمج أي مكتبات AI أخرى مستقبلاً.
-- **إدارة المحادثة:** يتذكر البوت آخر 10 رسائل في كل محادثة للحفاظ على السياق.
-- **خفيف وسريع:** يعتمد على مكتبة Neonize المستقرة.
-
----
-
-## ⚠️ تحذير
-هذا البوت يستخدم مكتبات غير رسمية. يفضل استخدامه على رقم تجريبي لتجنب احتمالية الحظر من شركة واتساب.
+## الميزات
+- ذاكرة مستمرة باستخدام PostgreSQL
+- تذكيرات ذكية بالعربي المصري
+- تعلم تلقائي من المحادثات
+- Health check على port 7860
+- Keep-alive لمنع السكون التلقائي

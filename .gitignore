@@ -1,6 +1,5 @@
-session.db
-session.zip
 session.enc
+session.zip
 __pycache__/
 *.pyc
 .env
