@@ -67,6 +67,7 @@ jobs:
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
           OLLAMA_API_URL: ${{ secrets.OLLAMA_API_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           MAX_RUNTIME: "19200"
         run: python main.py
 
