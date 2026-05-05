@@ -1,0 +1,38 @@
+name: Run WhatsApp Bot
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '0 */5 * * *' # Restart every 5 hours to bypass the 6-hour GitHub Actions limit
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run WhatsApp Bot
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_API_URL: ${{ secrets.OLLAMA_API_URL }}
+          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SPACE_ID: ${{ secrets.SPACE_ID }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python main.py
