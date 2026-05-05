@@ -617,20 +617,25 @@ def background_tasks():
 
 @client.event.qr
 def on_qr(_client: NewClient, data_qr: bytes):
-    """عرض QR code واحد بس - مع debounce 20 ثانية"""
+    """عرض QR code في نفس المكان بدون تكرار الشاشة"""
     global _qr_count, _last_qr_time
     now = time.time()
     if now - _last_qr_time < 20: return
     _last_qr_time = now
     _qr_count += 1
+    
+    # مسح الشاشة عشان يظهر كود واحد بس (ويندوز أو ماك/لينكس)
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    print("\n" + "=" * 50)
+    print(">> Scan with WhatsApp > Linked Devices > Link a Device")
     if _qr_count > 1:
-        print("\n" + "=" * 50 + "\n>> QR expired - new one below:\n" + "=" * 50)
-    else:
-        print("\n" + "=" * 50)
+        print(f">> [تم التحديث] الكود القديم انتهت صلاحيته - امسح الكود الجديد (محاولة #{_qr_count})")
+    print("=" * 50 + "\n")
+    
     qr_code = segno.make(data_qr)
     qr_code.terminal(compact=True)
-    print(f"\n>> Scan with WhatsApp > Linked Devices > Link a Device")
-    print(f">> Attempt #{_qr_count}\n>> Waiting for scan...\n")
+    print("\n>> Waiting for scan...\n")
 
 @client.event(ConnectedEv)
 def on_connected(_client: NewClient, _event: ConnectedEv):
